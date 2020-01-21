@@ -7,7 +7,7 @@
 //
 
 import MQTTCodec
-import Network
+import FoundationNetworking
 import struct Foundation.Data
 
 extension MQTTClient {
@@ -46,7 +46,9 @@ extension MQTTClient {
 
         // TODO: Replace this with NIOSSL.
         /// The TLS options for the connection.
+#if canImport(Network)
         var tlsOptions: NWProtocolTLS.Options? = nil
+#endif
 
         /// Create a `Configuration` with some pre-defined defaults.
         ///
@@ -72,11 +74,14 @@ extension MQTTClient {
             self.password = password
             self.connectionBackoff = connectionBackoff
 
+#if canImport(Network)
             if tlsEnabled {
                 tlsOptions = Configuration.makeTLSOptions()
             }
+#endif
         }
 
+#if canImport(Network)
         /// Make TLS opetions.
         private static func makeTLSOptions() -> NWProtocolTLS.Options {
             let options = NWProtocolTLS.Options()
@@ -86,5 +91,6 @@ extension MQTTClient {
 
             return options
         }
+#endif
     }
 }

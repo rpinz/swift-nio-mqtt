@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import Network
+import FoundationNetworking
 import Dispatch
 import NIO
 import NIOTransportServices
@@ -25,7 +25,11 @@ public final class MQTTClient {
     /// The configuration for this client.
     let configuration: Configuration
 
+#if canImport(Network)
     private let group: NIOTSEventLoopGroup
+#else
+    private let group: EventLoopGroup
+#endif
     private var channel: EventLoopFuture<Channel> {
         willSet {
             willSetChannel(to: newValue)
@@ -43,13 +47,28 @@ public final class MQTTClient {
     public init(configuration: Configuration) {
         self.configuration = configuration
 
+#if canImport(Network)
         group = NIOTSEventLoopGroup()
+#else
+        group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+#endif
         channel = group.next().makeFailedFuture(MQTTError.unavailable)
         connectivity = ConnectivityStateMonitor()
         session = Session(qos: configuration.qos)
 
         connectivity.delegate = self
     }
+
+#if canImport(Network)
+#else
+    deinit {
+      do {
+        try group.syncShutdownGracefully()
+      } catch {
+        print(error)
+      }
+    }
+#endif
 
     public func connect() {
         channel = makeChannel(
@@ -217,6 +236,7 @@ extension MQTTClient {
     }
 
     // TODO: Return a `ClientBootstrapProtocol` instead
+#if canImport(Network)
     private static func makeBootstrap(
         group: EventLoopGroup,
         configuration: Configuration,
@@ -235,6 +255,23 @@ extension MQTTClient {
 
         return bootstap
     }
+#else
+    private static func makeBootstrap(
+        group: EventLoopGroup,
+        configuration: Configuration,
+        mqttChannelHandler: MQTTChannelHandler
+    ) -> ClientBootstrap {
+        // Disable TLS for now
+        //let tlsOptions = makeTLSOptions()
+        return ClientBootstrap(group: group)
+            .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
+            .channelOption(ChannelOptions.socket(SocketOptionLevel(IPPROTO_TCP), TCP_NODELAY), value: 1)
+            //.tlsOptions(tlsOptions)
+            .channelInitializer { channel in
+                initializeChannel(channel, mqttChannelHandler: mqttChannelHandler)
+            }
+    }
+#endif
 
     private static func initializeChannel(
         _ channel: Channel,
